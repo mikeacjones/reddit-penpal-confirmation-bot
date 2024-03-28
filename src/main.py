@@ -147,13 +147,18 @@ def _handle_catchup(item: models.Submission | models.MoreComments):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "create-monthly":
-            new_submission = post_monthly_submission(SETTINGS)
-            lock_previous_submissions(SETTINGS, new_submission)
-            PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
-    else:
-        LOGGER.info("Bot start up")
-        PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
-        handle_catchup()
-        praw_bot_wrapper.run()
+    try:
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "create-monthly":
+                new_submission = post_monthly_submission(SETTINGS)
+                lock_previous_submissions(SETTINGS, new_submission)
+                PUSHOVER.send_message(f"Created monthly post for r/{SUBREDDIT_NAME}")
+        else:
+            LOGGER.info("Bot start up")
+            PUSHOVER.send_message(f"Bot startup for r/{SUBREDDIT_NAME}")
+            handle_catchup()
+            praw_bot_wrapper.run()
+    except Exception as ex:
+        LOGGER.exception(ex)
+        PUSHOVER.send_message(f"r{SUBREDDIT_NAME} bot exception: {ex}")
+        pass
