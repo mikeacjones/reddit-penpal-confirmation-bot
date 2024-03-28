@@ -3,7 +3,7 @@ import praw_bot_wrapper
 import sys
 from pushover import Pushover
 from datetime import datetime
-from praw import models
+from praw import models, Reddit
 from helpers_flair import increment_flair
 from helpers_submission import get_current_confirmation_post
 from helpers_redditor import get_redditor
@@ -15,13 +15,12 @@ from helpers_submission import lock_previous_submissions, post_monthly_submissio
 SUBREDDIT_NAME = os.environ["SUBREDDIT_NAME"]
 SECRETS = load_secrets(SUBREDDIT_NAME)
 PUSHOVER = Pushover(SECRETS["PUSHOVER_APP_TOKEN"], SECRETS["PUSHOVER_USER_TOKEN"])
-BOT = praw_bot_wrapper.bot(
-    SECRETS["REDDIT_CLIENT_ID"],
-    SECRETS["REDDIT_CLIENT_SECRET"],
-    SECRETS["REDDIT_USER_AGENT"],
-    SECRETS["REDDIT_USERNAME"],
-    SECRETS["REDDIT_PASSWORD"],
-    outage_threshold=10,
+BOT = Reddit(
+    client_id=SECRETS["REDDIT_CLIENT_ID"],
+    client_secret=SECRETS["REDDIT_CLIENT_SECRET"],
+    user_agent=SECRETS["REDDIT_USER_AGENT"],
+    username=SECRETS["REDDIT_USERNAME"],
+    password=SECRETS["REDDIT_PASSWORD"],
 )
 SETTINGS = Settings(BOT, SUBREDDIT_NAME)
 
@@ -111,7 +110,7 @@ def handle_new_mail(
     message.mark_read()
 
 
-@praw_bot_wrapper.outage_recovery_handler
+@praw_bot_wrapper.outage_recovery_handler(outage_threshold=10)
 def handle_catchup(started_at: datetime | None = None):
     # changed how we send the modmail so that it because an archivable message
     # mod discussions can't be archived which is annoying

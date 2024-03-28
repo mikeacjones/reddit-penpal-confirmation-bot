@@ -44,12 +44,12 @@ with Betamax.configure() as config:
         "<PUSHOVER-USER-TOKEN>", secrets["PUSHOVER_USER_TOKEN"]
     )
 
-BOT = praw_bot_wrapper.bot(
-    secrets["REDDIT_CLIENT_ID"],
-    secrets["REDDIT_CLIENT_SECRET"],
-    secrets["REDDIT_USER_AGENT"],
-    secrets["REDDIT_USERNAME"],
-    secrets["REDDIT_PASSWORD"],
+BOT = Reddit(
+    client_id=secrets["REDDIT_CLIENT_ID"],
+    client_secret=secrets["REDDIT_CLIENT_SECRET"],
+    user_agent=secrets["REDDIT_USER_AGENT"],
+    username=secrets["REDDIT_USERNAME"],
+    password=secrets["REDDIT_PASSWORD"],
 )
 http = BOT._core._requestor._http
 http.headers["Accept-Encoding"] = "identity"
