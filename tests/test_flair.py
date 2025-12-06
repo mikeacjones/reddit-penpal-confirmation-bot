@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+from unittest.mock import Mock, patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -10,6 +11,9 @@ from helpers_flair import (
     calculate_new_flair_counts,
     select_flair_template,
     format_flair_text,
+    get_current_flair,
+    set_redditor_flair,
+    increment_flair,
 )
 
 
@@ -222,3 +226,168 @@ class TestFormatFlairText:
     def test_large_numbers(self):
         result = format_flair_text("{E} emails, {L} letters", 9999, 12345)
         assert result == "9999 emails, 12345 letters"
+
+
+# ============================================================================
+# Tests for PRAW-dependent functions (using mocks)
+# ============================================================================
+
+
+class MockSettings:
+    """Mock Settings object for testing PRAW-dependent functions"""
+
+    def __init__(self):
+        self.SUBREDDIT = Mock()
+        self.FLAIR_PATTERN = SAMPLE_FLAIR_PATTERN
+        self.FLAIR_TEMPLATES = {
+            (0, 10): {"id": "template_0_10", "text": "📧 Emails: {E} | 📬 Letters: {L}", "mod_only": False},
+            (11, 50): {"id": "template_11_50", "text": "Regular - 📧 Emails: {E} | 📬 Letters: {L}", "mod_only": False},
+        }
+        self.SPECIAL_FLAIR_TEMPLATES = {
+            "volunteer": {"id": "volunteer", "text": "Volunteer - 📧 Emails: {E} | 📬 Letters: {L}"},
+        }
+        self.CURRENT_MODS = ["ModUser1", "ModUser2"]
+
+
+class TestGetCurrentFlair:
+    """Tests for get_current_flair() - fetching flair via PRAW API"""
+
+    def test_returns_flair_dict(self):
+        """Should return flair dictionary from PRAW API"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        flair_data = {"flair_text": "📧 Emails: 5 | 📬 Letters: 3", "flair_css_class": "template_0_10"}
+        settings.SUBREDDIT.flair = Mock(return_value=iter([flair_data]))
+
+        result = get_current_flair(settings, mock_redditor)
+
+        assert result == flair_data
+        settings.SUBREDDIT.flair.assert_called_once_with(mock_redditor)
+
+    def test_handles_no_flair(self):
+        """Should handle user with no flair"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        flair_data = {"flair_text": None, "flair_css_class": None}
+        settings.SUBREDDIT.flair = Mock(return_value=iter([flair_data]))
+
+        result = get_current_flair(settings, mock_redditor)
+
+        assert result["flair_text"] is None
+
+
+class TestSetRedditorFlair:
+    """Tests for set_redditor_flair() - setting flair via PRAW API"""
+
+    def test_calls_flair_set(self):
+        """Should call PRAW flair.set with correct parameters"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        template = {"id": "template_123", "text": "📧 Emails: {E} | 📬 Letters: {L}"}
+
+        set_redditor_flair(settings, mock_redditor, "📧 Emails: 5 | 📬 Letters: 3", template)
+
+        settings.SUBREDDIT.flair.set.assert_called_once_with(
+            mock_redditor,
+            text="📧 Emails: 5 | 📬 Letters: 3",
+            flair_template_id="template_123",
+        )
+
+
+class TestIncrementFlair:
+    """Tests for increment_flair() - the full flair update workflow"""
+
+    def test_increment_new_user(self):
+        """Should set flair for user with no existing flair"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        mock_redditor.__str__ = Mock(return_value="TestUser")
+
+        # User has no flair
+        settings.SUBREDDIT.flair = Mock(
+            return_value=iter([{"flair_text": None, "flair_css_class": None}])
+        )
+
+        old_flair, new_flair = increment_flair(settings, mock_redditor, 1, 2)
+
+        assert old_flair == "No Flair"
+        assert new_flair == "📧 Emails: 1 | 📬 Letters: 2"
+        settings.SUBREDDIT.flair.set.assert_called_once()
+
+    def test_increment_existing_flair(self):
+        """Should increment counts for user with existing flair"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        mock_redditor.__str__ = Mock(return_value="TestUser")
+
+        # User has existing flair
+        settings.SUBREDDIT.flair = Mock(
+            return_value=iter([{
+                "flair_text": "📧 Emails: 3 | 📬 Letters: 4",
+                "flair_css_class": "template_0_10"
+            }])
+        )
+
+        old_flair, new_flair = increment_flair(settings, mock_redditor, 2, 1)
+
+        assert old_flair == "📧 Emails: 3 | 📬 Letters: 4"
+        assert new_flair == "📧 Emails: 5 | 📬 Letters: 5"
+
+    def test_increment_preserves_special_flair(self):
+        """Should preserve special flair template when incrementing"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        mock_redditor.__str__ = Mock(return_value="VolunteerUser")
+
+        # User has special volunteer flair
+        settings.SUBREDDIT.flair = Mock(
+            return_value=iter([{
+                "flair_text": "Volunteer - 📧 Emails: 5 | 📬 Letters: 5",
+                "flair_css_class": "volunteer"
+            }])
+        )
+
+        old_flair, new_flair = increment_flair(settings, mock_redditor, 1, 1)
+
+        assert "Volunteer" in new_flair
+        assert "📧 Emails: 6" in new_flair
+
+    def test_increment_returns_none_when_no_template_match(self):
+        """Should return (None, None) when count exceeds all templates"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        mock_redditor.__str__ = Mock(return_value="HighCountUser")
+
+        # User has very high counts that exceed template ranges
+        settings.SUBREDDIT.flair = Mock(
+            return_value=iter([{
+                "flair_text": "📧 Emails: 100 | 📬 Letters: 100",
+                "flair_css_class": None
+            }])
+        )
+
+        old_flair, new_flair = increment_flair(settings, mock_redditor, 1, 1)
+
+        # Total would be 202, which exceeds max template range of 50
+        assert old_flair is None
+        assert new_flair is None
+
+    def test_increment_promotes_to_higher_template(self):
+        """Should upgrade to higher tier template when count crosses threshold"""
+        settings = MockSettings()
+        mock_redditor = Mock()
+        mock_redditor.__str__ = Mock(return_value="PromotedUser")
+
+        # User at edge of first tier (total = 10)
+        settings.SUBREDDIT.flair = Mock(
+            return_value=iter([{
+                "flair_text": "📧 Emails: 5 | 📬 Letters: 5",
+                "flair_css_class": "template_0_10"
+            }])
+        )
+
+        old_flair, new_flair = increment_flair(settings, mock_redditor, 1, 0)
+
+        # Total is now 11, should get template_11_50
+        assert "Regular" in new_flair
+        assert "📧 Emails: 6" in new_flair
