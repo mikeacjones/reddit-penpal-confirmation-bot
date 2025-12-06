@@ -9,11 +9,11 @@ def load_secrets(subreddit_name: str) -> dict:
     load_dotenv()
 
     return {
-        "REDDIT_CLIENT_ID": os.getenv("REDDIT_CLIENT_ID"),
-        "REDDIT_CLIENT_SECRET": os.getenv("REDDIT_CLIENT_SECRET"),
-        "REDDIT_USER_AGENT": os.getenv("REDDIT_USER_AGENT"),
-        "REDDIT_USERNAME": os.getenv("REDDIT_USERNAME"),
-        "REDDIT_PASSWORD": os.getenv("REDDIT_PASSWORD"),
+        "REDDIT_CLIENT_ID": os.getenv("REDDIT_CLIENT_ID", ""),
+        "REDDIT_CLIENT_SECRET": os.getenv("REDDIT_CLIENT_SECRET", ""),
+        "REDDIT_USER_AGENT": os.getenv("REDDIT_USER_AGENT", ""),
+        "REDDIT_USERNAME": os.getenv("REDDIT_USERNAME", ""),
+        "REDDIT_PASSWORD": os.getenv("REDDIT_PASSWORD", ""),
         "PUSHOVER_APP_TOKEN": os.getenv("PUSHOVER_APP_TOKEN", ""),
         "PUSHOVER_USER_TOKEN": os.getenv("PUSHOVER_USER_TOKEN", ""),
     }
