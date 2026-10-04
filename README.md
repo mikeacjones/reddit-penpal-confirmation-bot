@@ -1,97 +1,156 @@
-[![Pytest (main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml/badge.svg?branch=main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml) [![Coverage Status (main)](https://coveralls.io/repos/github/mikeacjones/reddit-penpal-confirmation-bot/badge.svg?branch=main&kill_cache=1)](https://coveralls.io/github/mikeacjones/reddit-penpal-confirmation-bot?branch=main)
+[![CI (main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml/badge.svg?branch=main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml)
 
-# Pen Pal Confirmation Bot v1
+# Pen Pal Confirmation Bot v2
 
 ## About
 
-Source code for this bot can be found here: [https://github.com/mikeacjones/penpal-confirmation-bot](https://github.com/mikeacjones/penpal-confirmation-bot)
+The Pen Pal Confirmation Bot is a flair bot that tracks how many emails and letters users have exchanged. It watches top-level comments on its monthly confirmation thread and updates the mentioned user's flair.
 
-The Pen Pal Confirmation Bot v1 is a flair bot designed to automatically track and update the number of emails and letters users have exchanged. It does this by monitoring all top-level comments on its monthly Confirmation Post.
+Version 2 is a [Reddit Devvit Web](https://developers.reddit.com/docs) app. It is hosted by Reddit and installed per subreddit; there is no server, Docker image or Reddit API credentials to manage.
 
-**Top Level Comment:** Defined as a comment that is directly responding to the post, not a reply to another comment.
+**Top Level Comment:** a comment replying directly to the post, not a reply to another comment.
 
-The bot scans these comments for a specific pattern: a mention of another user followed by #-#, where the first number represents emails and the second represents letters. 
+The bot scans these comments for a mention of another user followed by `#-#`, where the first number is emails and the second is letters. For example, `u/digitalmayhap - 1 - 2` adds 1 email and 2 letters to u/digitalmayhap.
 
-For instance, the comment `u/digitalmayhap - 1 - 2` would add 1 email and 2 letters to u/digitalmayhap's flair.
-
-The current regular expression (regex) used for detection is: `u/([a-zA-Z0-9_-]{3,})\s+\\?-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)`. This regex allows the bot to recognize various formats, such as:
+The default detection regex is `u/([a-zA-Z0-9_-]{3,})\s+\\?-?\s*(\d+)(?:\s+|\s*-\s*)(\d+)`, which accepts formats such as:
 
 - u/digitalmayhap - 1 - 2
 - u/digitalmayhap - 1 2
 - u/digitalmayhap 1 2
 - u/digitalmayhap 1 - 2
 
-To test this regex pattern, visit [https://regex101.com](https://regex101.com) and ensure the "flavor" is set to Python, matching the bot's coding language.
+To test a pattern, use [https://regex101.com](https://regex101.com) with the "ECMAScript (JavaScript)" flavor.
+
+## How it works
+
+- **Comment trigger:** every new top-level comment on a thread authored by the app is processed immediately.
+- **Hourly sweep:** a scheduled job rescans the newest comments on the current and previous confirmation threads and processes anything the trigger missed. It also retries failed flair updates and creates the monthly thread if it is missing.
+- **Monthly thread:** created at 00:00 UTC on the 1st. The previous thread is unstickied, the new one is stickied with "new" as the suggested sort, and older threads are locked.
+
+### Counts are stored by the bot
+
+The bot keeps every user's email and letter counts in its own Redis storage, which is the source of truth. Flair is only the display of those counts.
+
+- The first time a user is confirmed, the bot seeds their stored counts from their current flair.
+- After that, flair edits made by hand are **not** read back and will be overwritten on the next confirmation. To correct a user's counts, use the **Set a user's confirmation counts** moderator menu action.
+- Each confirmation is applied exactly once, even if a comment is retried by the sweep.
+
+## Moderator tools
+
+Available from the subreddit's moderator menu:
+
+| Action                           | What it does                                                     |
+| -------------------------------- | ---------------------------------------------------------------- |
+| Reload confirmation bot settings | Re-reads the wiki templates, flair templates and moderator list. |
+| Run confirmation catch-up        | Runs the sweep immediately.                                      |
+| Create monthly confirmation post | Creates this month's thread if it does not exist yet.            |
+| Set a user's confirmation counts | Overrides a user's stored counts and updates their flair.        |
+
+Settings can also be reloaded by sending a message starting with `reload` in a **Mod Discussion** or as a private moderator note in modmail.
+
+Settings are cached for up to an hour, so reload after editing wiki pages or flair templates.
+
+### Notifications
+
+The bot reports problems through modmail notifications and the app logs (`npx devvit logs <subreddit>`):
+
+- The monthly thread could not be created, or its wiki pages are not configured.
+- The hourly sweep failed three times in a row, and again when it recovers (using the `outage_recovery` template).
+- A comment failed to process three times.
+- Flair updates are still failing after retries (at most once a day).
 
 ## Configuration
 
+All text is configured through wiki pages under `confirmation-bot/`. If a page does not exist, the default in [`templates/`](templates) is used.
+
 ### Flair Templates
 
-The bot supports two flair types: ranged and non-ranged. Ranged flairs are applied based on a specific total of emails and letters exchanged, while non-ranged flairs track counts without enforcing a range. Non-ranged flairs remain until manually updated.
+The bot supports two flair types: ranged and non-ranged. Ranged flairs are applied based on the total of emails and letters exchanged. Non-ranged flairs track counts without enforcing a range and remain until manually changed.
 
-A flair that doesn't fit these categories won't be modified by the bot, such as the `Bot` flair or any mod-specific flairs, e.g., `Bot Maintenance`.
+Flairs that match neither format, such as `Bot` or mod-specific flairs, are never modified by the bot.
 
 #### Defining a Ranged Flair
 
-For a ranged flair, use the format:
-
 `MIN-MAX:📧 Emails: {E} | 📬 Letters: {L}`
 
-Ranges are inclusive. For example, a 0-49 range applies until the count reaches 50, at which point a new flair is assigned. Arbitrary text and colors can be added, and a "mod only" flag is available for mod-exclusive flairs.
+Ranges are inclusive. For example, a 0-49 range applies until the count reaches 50, at which point the next flair is assigned. Arbitrary text and colors can be added, and the "mod only" flag marks flairs used for moderators.
 
-> If no ranged flair is defined which is flagged as "mod only", then moderators who wish to track their exchanges will need to utilize a non-ranged flair.
+> If no ranged flair is flagged "mod only", moderators who want to track their exchanges need to use a non-ranged flair.
 
 #### Defining a Non-Ranged Flair
 
-Non-ranged flairs use the format:
-
 `📧 Emails: {E} | 📬 Letters: {L}`
 
-Additional text can precede or follow this template, like:
+Additional text can precede or follow the template, for example `Snail Mail Volunteer - 📧 Emails: {E} | 📬 Letters: {L}`.
 
-`Snail Mail Volunteer - 📧 Emails: {E} | 📬 Letters: {L}`
-
-Non-ranged flairs need to be assigned manually. If you forget to replace the {E} and {L} with initial values, the bot will default these to 0 the first time someone confirms a change.
+Non-ranged flairs are recognised by the user's flair CSS class matching the template ID. The bot sets this CSS class whenever it writes a non-ranged flair; when assigning one by hand, set the CSS class to the template ID.
 
 ### Monthly Post
 
-The bot schedules monthly posts in UTC. It must author these posts to track comments correctly.
+The bot must author the monthly posts to track their comments. If the title or body wiki page is not set, the thread is not created and moderators are notified.
 
 #### Title
 
-Edit the title via `confirmation-bot/monthly_post_title`. Incorporate the current date into the post title using the default format `%B %Y Confirmation Thread`, e.g., "March 2024 Confirmation Thread". For formatting details, see: [Python datetime formatting](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior). Any supported strftime variable can be used.
+`confirmation-bot/monthly_post_title`, formatted with [strftime directives](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior) in UTC, e.g. `%B %Y Confirmation Thread` gives "March 2024 Confirmation Thread".
 
 #### Content
 
-Edit the post content via `confirmation-bot/monthly_post`. The content can be static or utilize variables for dynamic formatting.
+`confirmation-bot/monthly_post`. Available variables:
 
-Variables available for the monthly post content include:
+- `bot_name`: the app account's username.
+- `subreddit_name`: the subreddit's name.
+- `previous_month_submission`: the previous thread, with `title`, `permalink`, `url` and `id` (e.g. `{previous_month_submission.permalink}`).
+- `now`: the current UTC date; supports date formats such as `{now:%B %Y}`.
 
-- `bot_name`: The bot's username.
-- `subreddit_name`: The subreddit's name.
-- `previous_month_submission`: A [PRAW Submission](https://praw.readthedocs.io/en/latest/code_overview/models/submission.html) object from the previous month.
-- `now`: Current date as a Python datetime object.
+#### Flair
+
+`confirmation-bot/monthly_post_flair_id`: the post flair template ID applied to the thread.
 
 ### Confirmation Reply Message
 
-To update the reply message for successful confirmations, edit `confirmation-bot/confirmation_message`. The message can be static or include variables for customization.
+`confirmation-bot/confirmation_message`. Variables:
 
-Variables for the reply message:
-
-- `mentioned_name`: The username of the mentioned user.
-- `old_flair`: The mentioned user's current flair.
-- `new_flair`: The mentioned user's updated flair.
+- `mentioned_name`: the mentioned user's username.
+- `old_flair`: the user's flair before this confirmation.
+- `new_flair`: the user's updated flair.
 
 ### Can't Update Yourself
 
-When a user attempts to change their own flair count, the bot replies with whatever static message is defined in the wiki page `confirmation-bot/cant_update_yourself`. No dynamic variables are available.
+`confirmation-bot/cant_update_yourself`: static reply when a user tries to confirm themselves.
 
 ### User Doesn't Exist
 
-If a user tags another user that does not exist, the bot replies with this message.
+`confirmation-bot/user_doesnt_exist`. Variables:
 
-Edit the content of the reply via `confirmation-bot/user_doesnt_exist`. The content can be static or utilize variables for dynamic formatting.
+- `mentioned_name`: the name the user tagged.
 
-Variables available for the comment include:
+### Flair Update Failed
 
-- `mentioned_name`: The name the user tagged.
+`confirmation-bot/flair_update_failed`. Variables:
+
+- `mentioned_name`: the mentioned user's username.
+
+### Regex Templates
+
+`confirmation_regex_pattern`, `flair_regex`, `ranged_flair_template_regex` and `special_flair_template_regex` hold the JavaScript regular expressions described above.
+
+## Development
+
+Requires Node 24+ and a Reddit account connected to [developers.reddit.com](https://developers.reddit.com).
+
+```bash
+npm install
+npm run login      # authenticate the Devvit CLI
+npm run dev        # playtest on your test subreddit
+npm test           # type check + unit tests
+npm run deploy     # upload a new version
+npm run launch     # upload and submit for review
+```
+
+Source layout:
+
+- `devvit.json`: triggers, scheduled jobs, menu actions and permissions.
+- `src/server/routes/`: HTTP endpoints Reddit calls for triggers, cron jobs, menus and forms.
+- `src/server/services/`: Redis counts, comment processing, sweep, monthly post, settings and modmail.
+- `src/server/core/`: pure parsing, flair and formatting logic (unit tested).
+- `templates/`: default values for the wiki-configured templates.
