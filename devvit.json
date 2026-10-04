@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "penpal-confirmations",
+  "name": "penpal-confirmation",
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
@@ -70,6 +70,6 @@
     }
   },
   "dev": {
-    "subreddit": "penpal_confirmat_dev2"
+    "subreddit": "penpal_confirmati_dev"
   }
 }

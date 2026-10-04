@@ -2,6 +2,7 @@ name: Devvit
 
 on:
   push:
+    branches: ['**']
   pull_request:
 
 concurrency:
@@ -38,6 +39,8 @@ jobs:
       RUN_ATTEMPT: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -47,15 +50,19 @@ jobs:
         run: |
           app="$(node -p "require('./devvit.json').name")"
           subreddit="$(node -p "require('./devvit.json').dev.subreddit")"
+          latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+          base="${latest#v}"
+          base="${base:-$(node -p "require('./package.json').version")}"
           # Devvit only requires versions to be unique, so derive one from the run; this also keeps
           # re-runs from colliding. `devvit view` can't be used to read back a bumped version, as it
           # ignores prereleases.
-          version="$(node -p "require('./package.json').version").$((RUN_NUMBER * 100 + RUN_ATTEMPT))"
+          version="$base.$((RUN_NUMBER * 100 + RUN_ATTEMPT))"
           npx devvit upload --version "$version"
           npx devvit install "$subreddit" "$app@$version"
           echo "Installed \`$version\` on r/$subreddit" >> "$GITHUB_STEP_SUMMARY"
 
-  # Main releases the next version: submit it for Reddit review, then commit and tag the version.
+  # Main releases the next version: submit it for Reddit review, then tag it. Tags are the record of
+  # released versions; nothing is committed back, as main only accepts changes through PRs.
   # Once approved, moderators update the app from the subreddit's installed apps page.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -78,24 +85,26 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          current="$(node -p "require('./package.json').version")"
-          # Release package.json's version as-is unless it is already tagged, so a manual
-          # minor or major bump in package.json is honored.
-          if git rev-parse -q --verify "refs/tags/v$current" > /dev/null; then
-            npm version patch --no-git-tag-version > /dev/null
+          latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+          latest="${latest#v}"
+          # package.json is a floor, so minor and major bumps are made by editing it.
+          floor="$(node -p "require('./package.json').version")"
+          if [ -z "$latest" ]; then
+            version="$floor"
+          else
+            IFS=. read -r major minor patch <<< "$latest"
+            version="$major.$minor.$((patch + 1))"
+            if [ "$(printf '%s\n' "$version" "$floor" | sort -V | tail -n 1)" = "$floor" ]; then
+              version="$floor"
+            fi
           fi
-          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Submit for review
         run: npx devvit publish --public --version "${{ steps.version.outputs.version }}"
-      - name: Commit and tag release
+      - name: Tag release
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git diff --cached --quiet || git commit -m "Release v$VERSION [skip ci]"
-          git pull --rebase origin main
           git tag "v$VERSION"
-          git push origin HEAD:main "v$VERSION"
+          git push origin "v$VERSION"
           echo "Submitted \`$VERSION\` for review." >> "$GITHUB_STEP_SUMMARY"
