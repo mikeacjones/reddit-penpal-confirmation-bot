@@ -1,0 +1,101 @@
+name: Devvit
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: devvit-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:types
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run build
+
+  # Every non-main branch push uploads a private prerelease and installs it on the dev subreddit
+  # from devvit.json.
+  deploy-test:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    concurrency:
+      group: devvit-test-subreddit
+      cancel-in-progress: false
+    env:
+      DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN }}
+      RUN_NUMBER: ${{ github.run_number }}
+      RUN_ATTEMPT: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Upload and install prerelease
+        run: |
+          app="$(node -p "require('./devvit.json').name")"
+          subreddit="$(node -p "require('./devvit.json').dev.subreddit")"
+          # Devvit only requires versions to be unique, so derive one from the run; this also keeps
+          # re-runs from colliding. `devvit view` can't be used to read back a bumped version, as it
+          # ignores prereleases.
+          version="$(node -p "require('./package.json').version").$((RUN_NUMBER * 100 + RUN_ATTEMPT))"
+          npx devvit upload --version "$version"
+          npx devvit install "$subreddit" "$app@$version"
+          echo "Installed \`$version\` on r/$subreddit" >> "$GITHUB_STEP_SUMMARY"
+
+  # Main releases the next version: submit it for Reddit review, then commit and tag the version.
+  # Once approved, moderators update the app from the subreddit's installed apps page.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEVVIT_AUTH_TOKEN: ${{ secrets.DEVVIT_AUTH_TOKEN }}
+      DEVVIT_ALLOW_SOURCE_UPLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Determine version
+        id: version
+        run: |
+          current="$(node -p "require('./package.json').version")"
+          # Release package.json's version as-is unless it is already tagged, so a manual
+          # minor or major bump in package.json is honored.
+          if git rev-parse -q --verify "refs/tags/v$current" > /dev/null; then
+            npm version patch --no-git-tag-version > /dev/null
+          fi
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Submit for review
+        run: npx devvit publish --version "${{ steps.version.outputs.version }}"
+      - name: Commit and tag release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git diff --cached --quiet || git commit -m "Release v$VERSION [skip ci]"
+          git pull --rebase origin main
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+          echo "Submitted \`$VERSION\` for review." >> "$GITHUB_STEP_SUMMARY"

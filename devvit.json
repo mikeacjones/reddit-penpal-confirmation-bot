@@ -1,0 +1,75 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "penpal-confirmation",
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Reload confirmation bot settings",
+        "description": "Reload wiki templates and flair template cache from Reddit.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reload-settings"
+      },
+      {
+        "label": "Run confirmation catch-up",
+        "description": "Scan the current monthly confirmation post for missed comments.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/run-sweep"
+      },
+      {
+        "label": "Create monthly confirmation post",
+        "description": "Create this month's confirmation thread if it does not already exist.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/create-monthly"
+      },
+      {
+        "label": "Set a user's confirmation counts",
+        "description": "Override the email/letter counts the bot stores for a user.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/set-counts"
+      }
+    ]
+  },
+  "forms": {
+    "setCounts": "/internal/form/set-counts"
+  },
+  "triggers": {
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onAppUpgrade": "/internal/triggers/on-app-upgrade",
+    "onCommentSubmit": "/internal/triggers/on-comment-submit",
+    "onModMail": "/internal/triggers/on-mod-mail"
+  },
+  "scheduler": {
+    "tasks": {
+      "hourly-sweep": {
+        "endpoint": "/internal/cron/hourly-sweep",
+        "cron": "0 * * * *"
+      },
+      "monthly-post": {
+        "endpoint": "/internal/cron/monthly-post",
+        "cron": "0 0 1 * *"
+      }
+    }
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "permissions": {
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "scope": "moderator"
+    }
+  },
+  "dev": {
+    "subreddit": "penpal_confirmati_dev"
+  }
+}
