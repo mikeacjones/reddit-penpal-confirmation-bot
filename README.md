@@ -58,7 +58,7 @@ npm test         # type check, unit and scenario tests
 Deploys run from GitHub Actions:
 
 - **Other branches:** each push uploads a prerelease (for example `1.0.0.4201`) and installs it on the dev subreddit set in `devvit.json`.
-- **`main`:** each push submits the next version for Reddit review, then commits the version and tags it `vX.Y.Z`. The patch number is bumped automatically; to release a minor or major version, set it in `package.json`.
+- **`main`:** each push submits the next version for Reddit review as a public app, then commits the version and tags it `vX.Y.Z`. The patch number is bumped automatically; to release a minor or major version, set it in `package.json`.
 
 Once Reddit approves a version, moderators update the app from the subreddit's installed apps page.
 
