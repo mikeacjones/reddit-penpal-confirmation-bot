@@ -50,7 +50,7 @@ Requires Node 24+.
 npm install
 npm run login    # authenticate the Devvit CLI
 npm run dev      # playtest on a test subreddit
-npm test         # type check and unit tests
+npm test         # type check, unit and scenario tests
 ```
 
 ## Deployment

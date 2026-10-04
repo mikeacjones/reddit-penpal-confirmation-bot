@@ -25,6 +25,7 @@
     "hono": "4.13.11"
   },
   "devDependencies": {
+    "@devvit/test": "0.14.6",
     "@eslint/js": "10.0.1",
     "@types/node": "^24.13.3",
     "eslint": "10.11.0",
