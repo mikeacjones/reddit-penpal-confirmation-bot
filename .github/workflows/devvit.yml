@@ -86,7 +86,7 @@ jobs:
           fi
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Submit for review
-        run: npx devvit publish --version "${{ steps.version.outputs.version }}"
+        run: npx devvit publish --public --version "${{ steps.version.outputs.version }}"
       - name: Commit and tag release
         env:
           VERSION: ${{ steps.version.outputs.version }}
