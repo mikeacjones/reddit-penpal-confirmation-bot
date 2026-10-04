@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "penpal-confirmation-bot",
+  "name": "penpal-confirmation",
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
@@ -68,5 +68,8 @@
       "enable": true,
       "scope": "moderator"
     }
+  },
+  "dev": {
+    "subreddit": "penpal_confirmati_dev"
   }
 }

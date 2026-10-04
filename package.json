@@ -1,14 +1,12 @@
 {
   "private": true,
   "name": "penpal-confirmation-bot",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "deploy": "npm run test:types && npm run lint && npm run test:unit && devvit upload",
     "dev": "devvit playtest",
-    "launch": "npm run deploy && devvit publish",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "login": "devvit login",
     "prettier": "prettier --write .",

@@ -1,4 +1,4 @@
-[![CI](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml/badge.svg?branch=main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/test-and-deploy.yml)
+[![Devvit](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/devvit.yml/badge.svg?branch=main)](https://github.com/mikeacjones/reddit-penpal-confirmation-bot/actions/workflows/devvit.yml)
 
 # Pen Pal Confirmation Bot
 
@@ -51,5 +51,15 @@ npm install
 npm run login    # authenticate the Devvit CLI
 npm run dev      # playtest on a test subreddit
 npm test         # type check and unit tests
-npm run deploy   # upload a new version
 ```
+
+## Deployment
+
+Deploys run from GitHub Actions:
+
+- **Other branches:** each push uploads a prerelease (for example `1.0.0.4201`) and installs it on the dev subreddit set in `devvit.json`.
+- **`main`:** each push submits the next version for Reddit review, then commits the version and tags it `vX.Y.Z`. The patch number is bumped automatically; to release a minor or major version, set it in `package.json`.
+
+Once Reddit approves a version, moderators update the app from the subreddit's installed apps page.
+
+The workflow needs a `DEVVIT_AUTH_TOKEN` secret: the contents of `~/.devvit/token` after `npm run login`.
